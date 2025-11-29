@@ -59,11 +59,11 @@ export function DiagnosticForm() {
                     </div>
 
                     <h1 className="text-5xl font-bold tracking-tight text-white mb-6">
-                        Descubra o potencial oculto do seu e-commerce.
+                        Diagnóstico de E-commerce
                     </h1>
 
                     <p className="text-xl text-zinc-400 mb-8 leading-relaxed">
-                        Nossa inteligência artificial analisa mais de 50 pontos críticos do seu site para identificar oportunidades de receita perdidas em segundos.
+                        Identifique gargalos de performance, SEO e UX em segundos. Nossa IA analisa seu site e entrega um plano de ação personalizado para aumentar suas vendas.
                     </p>
 
                     <div className="space-y-4">
