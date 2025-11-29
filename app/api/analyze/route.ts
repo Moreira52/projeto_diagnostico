@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       },
     });
 
-    console.log(`🚀[${ analysis.id }] Análise iniciada para ${ websiteUrl } `);
+    console.log(`[${ analysis.id }] Análise iniciada para ${ websiteUrl } `);
 
     // 3. Processamento Assíncrono em Background
     // A função after() permite que o código continue rodando após a resposta ser enviada.
@@ -130,10 +130,10 @@ async function processAnalysis(analysisId: string, websiteUrl: string) {
       }
     });
 
-    console.log(`✅[${ analysisId }] Análise concluída com sucesso!`);
+    console.log(`[${ analysisId }] Análise concluída com sucesso!`);
 
   } catch (error: any) {
-    console.error(`❌[${ analysisId }] Falha no worker: `, error);
+    console.error(`[${ analysisId }] Falha no worker: `, error);
     
     // Registro do erro no banco para o frontend saber
     await prisma.analysis.update({
