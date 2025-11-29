@@ -4,7 +4,7 @@
  */
 
 const requiredEnvs = [
-    'GEMINI_API_KEY',
+    'GOOGLE_API_KEY',
     'BUILTWITH_API_KEY',
     'PAGESPEED_API_KEY',
 ] as const;
