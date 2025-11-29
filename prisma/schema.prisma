@@ -1,0 +1,35 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Analysis {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  completedAt DateTime?
+
+  // Dados do Cliente
+  name        String
+  email       String
+  empresa     String
+  websiteUrl  String
+  phone       String?
+
+  // Status do Processamento
+  status       String  @default("pending") // pending, processing, completed, error
+  errorMessage String? // Mensagem de erro se falhar
+
+  // Dados Coletados (Armazenados como JSON string para flexibilidade no SQLite)
+  // Em Postgres usariamos o tipo Json nativo
+  scrapedData      String? // JSON
+  technologiesData String? // JSON
+  performanceData  String? // JSON
+  croInsights      String? // JSON
+}
