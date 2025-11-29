@@ -6,9 +6,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Loader2, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
 import { formSchema, type FormSchema } from '@/types/form-schema';
 import { cn } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
+import { z } from 'zod';
 
 export function DiagnosticForm() {
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const router = useRouter();
+    const [isLoading, setIsLoading] = useState(false);
 
     const {
         register,
@@ -25,20 +28,30 @@ export function DiagnosticForm() {
         },
     });
 
-    async function onSubmit(data: FormSchema) {
-        setIsSubmitting(true);
+    async function onSubmit(values: z.infer<typeof formSchema>) {
+        setIsLoading(true);
         try {
-            // Simulação de delay de rede
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-            console.log('Dados do formulário:', data);
+            // Chamada à API de Análise
+            const response = await fetch('/api/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(values),
+            });
 
-            // Aqui você redirecionaria para a página de loading ou resultados
-            // router.push('/analyzing');
-            alert('Diagnóstico iniciado! Verifique o console para os dados.');
-        } catch (error) {
-            console.error('Erro ao enviar:', error);
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Erro ao iniciar análise.');
+            }
+
+            // Redireciona para a página de dashboard/loading com o ID gerado
+            router.push(`/dashboard/${data.analysisId}`);
+
+        } catch (error: any) {
+            console.error('Erro na submissão:', error);
+            alert(`Erro: ${error.message}`); // Idealmente usar um Toast aqui
         } finally {
-            setIsSubmitting(false);
+            setIsLoading(false);
         }
     }
 
@@ -203,10 +216,10 @@ export function DiagnosticForm() {
 
                         <button
                             type="submit"
-                            disabled={isSubmitting}
+                            disabled={isLoading}
                             className="w-full mt-6 bg-primary hover:bg-primary/90 text-white font-bold py-4 px-6 rounded-lg transition-all transform active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(229,72,1,0.3)] hover:shadow-[0_0_30px_rgba(229,72,1,0.5)]"
                         >
-                            {isSubmitting ? (
+                            {isLoading ? (
                                 <>
                                     <Loader2 className="w-5 h-5 animate-spin" />
                                     Processando...
