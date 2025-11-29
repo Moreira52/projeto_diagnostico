@@ -1,0 +1,208 @@
+import { genAI, MODELS } from './gemini-client';
+import type { ScrapedData } from './scraper';
+import type { DetectedTechnology } from './technology-detector';
+import type { PerformanceMetrics } from './performance-analyzer';
+
+// Interface para a resposta estruturada da análise de CRO
+export interface CROAnalysis {
+    pontoFortes: string[];
+    oportunidadesMelhoria: {
+        titulo: string;
+        descricao: string;
+        impacto: 'alto' | 'médio' | 'baixo';
+        prioridade: number; // 1-5
+    }[];
+    insightsEstrategicos: string[];
+    scoreCRO: {
+        nota: number; // 0-100
+        justificativa: string;
+    };
+    error?: string;
+}
+
+/**
+ * Analisa os dados coletados do e-commerce e gera um relatório de CRO usando IA.
+ * 
+ * @param scrapedData Dados extraídos da página (meta tags, conteúdo, etc)
+ * @param technologiesData Tecnologias detectadas no site
+ * @param performanceData Métricas de performance (Core Web Vitals)
+ * @returns Análise estruturada de CRO
+ */
+export async function analyzeCRO(
+    scrapedData: ScrapedData,
+    technologiesData: DetectedTechnology[],
+    performanceData: PerformanceMetrics
+): Promise<CROAnalysis> {
+    console.log('🧠 Iniciando análise de CRO com Gemini...');
+
+    try {
+        // Validação básica dos dados de entrada
+        if (!scrapedData || !performanceData) {
+            throw new Error('Dados insuficientes para análise de CRO.');
+        }
+
+        // 1. Configuração do Modelo
+        // Usamos o gemini-1.5-flash por ser rápido e eficiente para tarefas de análise estruturada.
+        // A temperatura 0.7 permite criatividade na análise mas mantém consistência no formato.
+        const model = genAI.getGenerativeModel({
+            model: MODELS.FLASH_1_5,
+            generationConfig: {
+                temperature: 0.7,
+                topK: 40,
+                topP: 0.95,
+                maxOutputTokens: 8192,
+                responseMimeType: 'application/json', // Força resposta estritamente em JSON
+            },
+        });
+
+        // 2. Construção do Prompt (Prompt Engineering)
+        // Utilizamos XML tags para delimitar contexto, role e task, o que ajuda o modelo a entender melhor a estrutura.
+        // Fornecemos os dados brutos em JSON dentro do contexto.
+        const prompt = `
+<role>
+Você é um especialista sênior em CRO (Conversion Rate Optimization) e UX especializado em e-commerce brasileiro.
+Sua análise deve ser técnica, baseada em dados, mas acionável para donos de e-commerce.
+</role>
+
+<constraints>
+1. Seja objetivo e baseie-se estritamente nos dados fornecidos.
+2. Foque em oportunidades de alto impacto para aumento de conversão.
+3. Considere o contexto do mercado brasileiro (meios de pagamento, frete, confiança).
+4. Use linguagem profissional.
+5. A resposta DEVE ser um JSON válido seguindo o schema solicitado.
+</constraints>
+
+<context>
+## Dados do Site Analisado: ${scrapedData.url}
+
+### Conteúdo e SEO On-page:
+- Título: ${scrapedData.title}
+- Descrição: ${scrapedData.metaDescription}
+- Keywords: ${scrapedData.metaKeywords}
+- Headings (H1-H3): ${JSON.stringify({ h1: scrapedData.headings.h1, h2: scrapedData.headings.h2, h3: scrapedData.headings.h3 })}
+- Imagens sem Alt: ${scrapedData.images.withoutAlt} de ${scrapedData.images.total}
+- Scripts Detectados: ${scrapedData.scripts.detected.join(', ')}
+
+### Tecnologias Detectadas (Stack):
+${JSON.stringify(technologiesData.map(t => `${t.name} (${t.category})`), null, 2)}
+
+### Performance (Core Web Vitals):
+- Performance Score: ${performanceData.score}/100
+- FCP (First Contentful Paint): ${performanceData.fcp}
+- LCP (Largest Contentful Paint): ${performanceData.lcp}
+- CLS (Cumulative Layout Shift): ${performanceData.cls}
+- TTI (Time to Interactive): ${performanceData.tti}
+- Speed Index: ${performanceData.speedIndex}
+</context>
+
+<task>
+Analise este e-commerce e forneça uma análise estruturada em JSON com o seguinte formato exato:
+
+{
+  "pontoFortes": [
+    "descrição detalhada de até 5 pontos fortes identificados"
+  ],
+  "oportunidadesMelhoria": [
+    {
+      "titulo": "título da oportunidade",
+      "descricao": "descrição detalhada do problema e da solução sugerida",
+      "impacto": "alto|médio|baixo",
+      "prioridade": 1-5 (sendo 5 a maior prioridade)
+    }
+  ],
+  "insightsEstrategicos": [
+    "3 insights estratégicos de negócio baseados na combinação de tecnologias e performance"
+  ],
+  "scoreCRO": {
+    "nota": 0-100 (baseada na análise geral),
+    "justificativa": "explicação curta da nota"
+  }
+}
+</task>
+`;
+
+        // 3. Chamada à API com Timeout
+        // Implementamos um timeout manual pois a biblioteca cliente pode não ter timeout padrão configurado para geração.
+        const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout na análise de IA (60s)')), 60000)
+        );
+
+        const result = await Promise.race([
+            model.generateContent(prompt),
+            timeoutPromise
+        ]);
+
+        const response = result.response;
+
+        // Log de uso de tokens para monitoramento de custos e limites
+        console.log('📊 Tokens usados na análise:', {
+            promptTokens: response.usageMetadata?.promptTokenCount,
+            candidatesTokens: response.usageMetadata?.candidatesTokenCount,
+            totalTokens: response.usageMetadata?.totalTokenCount
+        });
+
+        const text = response.text();
+
+        // 4. Parsing e Validação
+        try {
+            const analysis = JSON.parse(text) as CROAnalysis;
+            return analysis;
+        } catch (parseError) {
+            console.error('❌ Erro ao fazer parse do JSON da IA:', parseError);
+            console.debug('Texto recebido:', text);
+            throw new Error('Falha ao processar resposta da IA.');
+        }
+
+    } catch (error: any) {
+        console.error('❌ Erro na análise de CRO:', error);
+
+        // Tratamento de erros específicos da API do Google
+        if (error.message?.includes('RESOURCE_EXHAUSTED')) {
+            console.warn('⚠️ Rate limit do Gemini excedido.');
+            return getFallbackAnalysis(performanceData, 'Limite de requisições da IA excedido. Análise baseada apenas em métricas.');
+        }
+
+        if (error.message?.includes('API_KEY')) {
+            return getFallbackAnalysis(performanceData, 'Erro de configuração da API Key.');
+        }
+
+        return getFallbackAnalysis(performanceData, `Erro na análise inteligente: ${error.message}`);
+    }
+}
+
+/**
+ * Gera uma análise básica de fallback baseada apenas em regras estáticas de performance.
+ * Usado quando a IA falha ou excede limites.
+ */
+function getFallbackAnalysis(performance: PerformanceMetrics, errorMessage: string): CROAnalysis {
+    const pontosFortes = [];
+    const oportunidades = [];
+
+    if (performance.score >= 90) pontosFortes.push('Excelente pontuação de performance geral.');
+    if (parseFloat(performance.cls) < 0.1) pontosFortes.push('Boa estabilidade visual (CLS).');
+
+    if (performance.score < 50) {
+        oportunidades.push({
+            titulo: 'Melhorar Performance Geral',
+            descricao: 'O site está muito lento, o que impacta severamente a conversão móvel.',
+            impacto: 'alto',
+            prioridade: 5
+        });
+    }
+
+    return {
+        pontoFortes: pontosFortes.length > 0 ? pontosFortes : ['Site acessível'],
+        oportunidadesMelhoria: oportunidades.length > 0 ? oportunidades : [{
+            titulo: 'Revisão Manual Necessária',
+            descricao: 'Não foi possível gerar recomendações automáticas detalhadas no momento.',
+            impacto: 'médio',
+            prioridade: 3
+        }],
+        insightsEstrategicos: ['Monitore seus Core Web Vitals mensalmente.'],
+        scoreCRO: {
+            nota: performance.score,
+            justificativa: 'Nota baseada puramente em métricas de performance devido a erro na análise detalhada.'
+        },
+        error: errorMessage
+    };
+}
