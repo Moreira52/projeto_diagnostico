@@ -36,28 +36,11 @@ export async function analyzeCRO(
     console.log('🧠 Iniciando análise de CRO com Gemini...');
 
     try {
-        // Validação básica dos dados de entrada
         if (!scrapedData || !performanceData) {
             throw new Error('Dados insuficientes para análise de CRO.');
         }
 
-        // 1. Configuração do Modelo
-        // Usamos o gemini-1.5-flash por ser rápido e eficiente para tarefas de análise estruturada.
-        // A temperatura 0.7 permite criatividade na análise mas mantém consistência no formato.
-        const model = genAI.getGenerativeModel({
-            model: MODELS.FLASH_1_5,
-            generationConfig: {
-                temperature: 0.7,
-                topK: 40,
-                topP: 0.95,
-                maxOutputTokens: 8192,
-                responseMimeType: 'application/json', // Força resposta estritamente em JSON
-            },
-        });
-
-        // 2. Construção do Prompt (Prompt Engineering)
-        // Utilizamos XML tags para delimitar contexto, role e task, o que ajuda o modelo a entender melhor a estrutura.
-        // Fornecemos os dados brutos em JSON dentro do contexto.
+        // 2. Construção do Prompt
         const prompt = `
 <role>
 Você é um especialista sênior em CRO (Conversion Rate Optimization) e UX especializado em e-commerce brasileiro.
@@ -121,20 +104,21 @@ Analise este e-commerce e forneça uma análise estruturada em JSON com o seguin
 </task>
 `;
 
-        // 3. Chamada à API com Timeout
-        // Implementamos um timeout manual pois a biblioteca cliente pode não ter timeout padrão configurado para geração.
-        const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout na análise de IA (60s)')), 60000)
-        );
+        // 3. Chamada à API (SDK @google/genai v0.1.0+)
+        // A nova sintaxe usa models.generateContent diretamente na instância do cliente
+        const response = await genAI.models.generateContent({
+            model: MODELS.FLASH_1_5,
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: {
+                temperature: 0.7,
+                topK: 40,
+                topP: 0.95,
+                maxOutputTokens: 8192,
+                responseMimeType: 'application/json',
+            },
+        });
 
-        const result = await Promise.race([
-            model.generateContent(prompt),
-            timeoutPromise
-        ]);
-
-        const response = result.response;
-
-        // Log de uso de tokens para monitoramento de custos e limites
+        // Log de uso de tokens
         console.log('📊 Tokens usados na análise:', {
             promptTokens: response.usageMetadata?.promptTokenCount,
             candidatesTokens: response.usageMetadata?.candidatesTokenCount,
@@ -143,27 +127,24 @@ Analise este e-commerce e forneça uma análise estruturada em JSON com o seguin
 
         const text = response.text();
 
+        if (!text) {
+            throw new Error('Resposta vazia da IA.');
+        }
+
         // 4. Parsing e Validação
         try {
             const analysis = JSON.parse(text) as CROAnalysis;
             return analysis;
         } catch (parseError) {
             console.error('❌ Erro ao fazer parse do JSON da IA:', parseError);
-            console.debug('Texto recebido:', text);
             throw new Error('Falha ao processar resposta da IA.');
         }
 
     } catch (error: any) {
         console.error('❌ Erro na análise de CRO:', error);
 
-        // Tratamento de erros específicos da API do Google
         if (error.message?.includes('RESOURCE_EXHAUSTED')) {
-            console.warn('⚠️ Rate limit do Gemini excedido.');
-            return getFallbackAnalysis(performanceData, 'Limite de requisições da IA excedido. Análise baseada apenas em métricas.');
-        }
-
-        if (error.message?.includes('API_KEY')) {
-            return getFallbackAnalysis(performanceData, 'Erro de configuração da API Key.');
+            return getFallbackAnalysis(performanceData, 'Limite de requisições da IA excedido.');
         }
 
         return getFallbackAnalysis(performanceData, `Erro na análise inteligente: ${error.message}`);
@@ -172,11 +153,10 @@ Analise este e-commerce e forneça uma análise estruturada em JSON com o seguin
 
 /**
  * Gera uma análise básica de fallback baseada apenas em regras estáticas de performance.
- * Usado quando a IA falha ou excede limites.
  */
 function getFallbackAnalysis(performance: PerformanceMetrics, errorMessage: string): CROAnalysis {
-    const pontosFortes = [];
-    const oportunidades = [];
+    const pontosFortes: string[] = [];
+    const oportunidades: { titulo: string; descricao: string; impacto: 'alto' | 'médio' | 'baixo'; prioridade: number }[] = [];
 
     if (performance.score >= 90) pontosFortes.push('Excelente pontuação de performance geral.');
     if (parseFloat(performance.cls) < 0.1) pontosFortes.push('Boa estabilidade visual (CLS).');
