@@ -2,6 +2,7 @@ import { genAI, MODELS } from './gemini-client';
 import type { ScrapedData } from './scraper';
 import type { DetectedTechnology } from './technology-detector';
 import type { PerformanceMetrics } from './performance-analyzer';
+import { retryWithBackoff } from './retry-helper';
 
 // Interface para a resposta estruturada da análise de CRO
 export interface CROAnalysis {
@@ -104,19 +105,21 @@ Analise este e-commerce e forneça uma análise estruturada em JSON com o seguin
 </task>
 `;
 
-        // 3. Chamada à API (SDK @google/genai v0.1.0+)
-        // A nova sintaxe usa models.generateContent diretamente na instância do cliente
-        const response = await genAI.models.generateContent({
-            model: MODELS.FLASH_1_5,
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            config: {
-                temperature: 0.7,
-                topK: 40,
-                topP: 0.95,
-                maxOutputTokens: 8192,
-                responseMimeType: 'application/json',
-            },
-        });
+        // 3. Chamada à API com Retry Automático
+        // Envolvemos a chamada no helper de retry para lidar com Rate Limits (RESOURCE_EXHAUSTED)
+        const response = await retryWithBackoff(async () => {
+            return await genAI.models.generateContent({
+                model: MODELS.FLASH_1_5,
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                config: {
+                    temperature: 0.7,
+                    topK: 40,
+                    topP: 0.95,
+                    maxOutputTokens: 8192,
+                    responseMimeType: 'application/json',
+                },
+            });
+        }, { maxRetries: 3, initialDelay: 2000 });
 
         // Log de uso de tokens
         console.log('📊 Tokens usados na análise:', {
@@ -125,7 +128,18 @@ Analise este e-commerce e forneça uma análise estruturada em JSON com o seguin
             totalTokens: response.usageMetadata?.totalTokenCount
         });
 
-        const text = response.text();
+        // Extração do texto da resposta
+        // Cast para 'any' para evitar erros de tipagem estrita entre versões do SDK
+        const responseAny = response as any;
+        let text = '';
+
+        if (typeof responseAny.text === 'function') {
+            text = responseAny.text();
+        } else if (typeof responseAny.text === 'string') {
+            text = responseAny.text;
+        } else {
+            text = responseAny.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        }
 
         if (!text) {
             throw new Error('Resposta vazia da IA.');
